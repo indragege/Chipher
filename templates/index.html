@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CipherLab</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+    <div class="app">
+        <header class="top-bar">
+            <div class="title">
+                <h1>CipherLab</h1>
+                <p>Interactive Cryptography Playground</p>
+            </div>
+            <button id="compare-btn" class="btn-primary">Compare</button>
+        </header>
+        <div class="main-content">
+            <aside class="sidebar">
+                <div class="sidebar-group">
+                    <h3>Classical Ciphers</h3>
+                    <ul>
+                        <li data-cipher="caesar">Caesar Cipher</li>
+                        <li data-cipher="vigenere">Vigenère Cipher</li>
+                    </ul>
+                </div>
+            </aside>
+            <main class="content">
+                <div id="normal-mode" class="mode">
+                    <div class="panels">
+                        <div class="panel input-panel">
+                            <h2>Input</h2>
+                            <div class="mode-toggle">
+                                <button id="encode-btn" class="toggle-btn active">Encode</button>
+                                <button id="decode-btn" class="toggle-btn">Decode</button>
+                            </div>
+                            <textarea id="input-text" placeholder="Enter your text here..."></textarea>
+                            <div id="params" class="params"></div>
+                            <button id="process-btn" class="btn-primary">Process</button>
+                        </div>
+                        <div class="panel output-panel">
+                            <h2>Output</h2>
+                            <div class="output-actions">
+                                <button id="copy-btn" class="btn-secondary">Copy</button>
+                                <button id="download-btn" class="btn-secondary">Download</button>
+                                <button id="use-as-input-btn" class="btn-secondary">Use as Input</button>
+                            </div>
+                            <textarea id="output-text" readonly></textarea>
+                            <div class="stats">
+                                <div class="stat"><span>Input chars:</span> <span id="input-chars">0</span></div>
+                                <div class="stat"><span>Output chars:</span> <span id="output-chars">0</span></div>
+                                <div class="stat"><span>Change:</span> <span id="change">0</span></div>
+                                <div class="stat"><span>Time:</span> <span id="time">0ms</span></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="steps-section">
+                        <button id="show-steps-btn" class="accordion-btn">Show Details</button>
+                        <div id="steps-content" class="accordion-content">
+                            <div class="steps-summary">
+                                <p id="steps-description" class="steps-description">Select a cipher and press Process to
+                                    see step-by-step details.</p>
+                            </div>
+                            <ul id="steps-list"></ul>
+                            <div id="bruteforce-section" class="bruteforce hidden">
+                                <div class="bruteforce-header">
+                                    <h3>Brute Force Results</h3>
+                                    <p>All possible Caesar decode shifts are shown below.</p>
+                                </div>
+                                <ul id="bruteforce-list" class="bruteforce-list"></ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div id="compare-mode" class="mode hidden">
+                    <div class="compare-input">
+                        <h2>Shared Input</h2>
+                        <textarea id="shared-input" placeholder="Enter shared text..."></textarea>
+                        <button id="process-all-btn" class="btn-primary">Process All</button>
+                    </div>
+                    <div class="compare-panels">
+                        <div class="compare-panel">
+                            <select id="cipher1" class="cipher-select">
+                                <option value="caesar">Caesar Cipher</option>
+                                <option value="vigenere">Vigenère Cipher</option>
+                            </select>
+                            <textarea id="output1" readonly></textarea>
+                        </div>
+                        <div class="compare-panel">
+                            <select id="cipher2" class="cipher-select">
+                                <option value="caesar">Caesar Cipher</option>
+                                <option value="vigenere">Vigenère Cipher</option>
+                            </select>
+                            <textarea id="output2" readonly></textarea>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+        <div class="shortcuts">
+            <p>Shortcuts: Ctrl+Enter = Process | Ctrl+Shift+C = Copy | Ctrl+Shift+V = Use as Input</p>
+        </div>
+    </div>
+    <script>
+        let currentCipher = 'caesar';
+        let currentMode = 'encode';
+        let isCompareMode = false;
+
+        document.addEventListener('DOMContentLoaded', function () {
+            setupEventListeners();
+            selectCipher('caesar');
+        });
+
+        function setupEventListeners() {
+            // Sidebar cipher selection
+            document.querySelectorAll('.sidebar li').forEach(item => {
+                item.addEventListener('click', () => selectCipher(item.dataset.cipher));
+            });
+
+            // Mode toggle
+            document.getElementById('encode-btn').addEventListener('click', () => setMode('encode'));
+            document.getElementById('decode-btn').addEventListener('click', () => setMode('decode'));
+
+            // Process button
+            document.getElementById('process-btn').addEventListener('click', processText);
+
+            // Output actions
+            document.getElementById('copy-btn').addEventListener('click', copyOutput);
+            document.getElementById('download-btn').addEventListener('click', downloadOutput);
+            document.getElementById('use-as-input-btn').addEventListener('click', useAsInput);
+
+            // Compare mode
+            document.getElementById('compare-btn').addEventListener('click', toggleCompareMode);
+            document.getElementById('process-all-btn').addEventListener('click', processAll);
+
+            // Accordion
+            document.getElementById('show-steps-btn').addEventListener('click', toggleSteps);
+
+            // Keyboard shortcuts
+            document.addEventListener('keydown', handleShortcuts);
+        }
+
+        function selectCipher(cipher) {
+            currentCipher = cipher;
+            document.querySelectorAll('.sidebar li').forEach(item => {
+                item.classList.toggle('active', item.dataset.cipher === cipher);
+            });
+            updateParams();
+        }
+
+        function setMode(mode) {
+            currentMode = mode;
+            document.getElementById('encode-btn').classList.toggle('active', mode === 'encode');
+            document.getElementById('decode-btn').classList.toggle('active', mode === 'decode');
+        }
+
+        function updateParams() {
+            const paramsDiv = document.getElementById('params');
+            paramsDiv.innerHTML = '';
+            if (currentCipher === 'caesar') {
+                paramsDiv.innerHTML = '<label>Shift: <input type="number" id="shift" value="3" min="1" max="25"></label>';
+            } else if (currentCipher === 'vigenere') {
+                paramsDiv.innerHTML = '<label>Key: <input type="text" id="key" value="KEY"></label>';
+            }
+        }
+
+        async function processText() {
+            const text = document.getElementById('input-text').value;
+            const params = {};
+            if (currentCipher === 'caesar') params.shift = document.getElementById('shift').value;
+            else if (currentCipher === 'vigenere') params.key = document.getElementById('key').value;
+
+            const startTime = Date.now();
+            try {
+                const response = await fetch('/process', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ cipher: currentCipher, mode: currentMode, text, params })
+                });
+                const data = await response.json();
+                const endTime = Date.now();
+
+                document.getElementById('output-text').value = data.result || data.error;
+                document.getElementById('input-chars').textContent = data.input_chars || 0;
+                document.getElementById('output-chars').textContent = data.output_chars || 0;
+                document.getElementById('change').textContent = (data.output_chars - data.input_chars) || 0;
+                document.getElementById('time').textContent = `${endTime - startTime}ms`;
+
+                updateSteps(data);
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        function updateSteps(data) {
+            const description = document.getElementById('steps-description');
+            const stepsList = document.getElementById('steps-list');
+            const bruteForceSection = document.getElementById('bruteforce-section');
+            const bruteForceList = document.getElementById('bruteforce-list');
+
+            const steps = data.steps || [];
+            description.textContent = steps.length ? steps[0] : 'No details available.';
+            const remaining = steps.slice(1);
+            stepsList.innerHTML = remaining.map((step, index) =>
+                `<li><span class="step-index">${index + 1}</span>${step}</li>`
+            ).join('');
+
+            if (data.brute_force && data.brute_force.length) {
+                bruteForceSection.classList.remove('hidden');
+                bruteForceList.innerHTML = data.brute_force.map(item =>
+                    `<li><strong>Shift ${item.shift}</strong>: ${item.result}</li>`
+                ).join('');
+            } else {
+                bruteForceSection.classList.add('hidden');
+                bruteForceList.innerHTML = '';
+            }
+        }
+
+        function copyOutput() {
+            const output = document.getElementById('output-text');
+            output.select();
+            document.execCommand('copy');
+        }
+
+        function downloadOutput() {
+            const output = document.getElementById('output-text').value;
+            const blob = new Blob([output], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'cipher_output.txt';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function useAsInput() {
+            const output = document.getElementById('output-text').value;
+            document.getElementById('input-text').value = output;
+        }
+
+        function toggleCompareMode() {
+            isCompareMode = !isCompareMode;
+            document.getElementById('normal-mode').classList.toggle('hidden', isCompareMode);
+            document.getElementById('compare-mode').classList.toggle('hidden', !isCompareMode);
+            document.getElementById('compare-btn').textContent = isCompareMode ? 'Normal' : 'Compare';
+        }
+
+        async function processAll() {
+            const text = document.getElementById('shared-input').value;
+            const ciphers = ['cipher1', 'cipher2'];
+            for (let i = 0; i < ciphers.length; i++) {
+                const cipher = document.getElementById(ciphers[i]).value;
+                try {
+                    const response = await fetch('/process', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ cipher, mode: 'encode', text, params: {} })
+                    });
+                    const data = await response.json();
+                    document.getElementById(`output${i + 1}`).value = data.result || data.error;
+                } catch (error) {
+                    console.error('Error:', error);
+                }
+            }
+        }
+
+        function toggleSteps() {
+            const content = document.getElementById('steps-content');
+            content.classList.toggle('open');
+        }
+
+        function handleShortcuts(e) {
+            if (e.ctrlKey) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (isCompareMode) processAll();
+                    else processText();
+                } else if (e.shiftKey && e.key === 'C') {
+                    e.preventDefault();
+                    copyOutput();
+                } else if (e.shiftKey && e.key === 'V') {
+                    e.preventDefault();
+                    useAsInput();
+                }
+            }
+        }
+    </script>
+</body>
+
+</html>
